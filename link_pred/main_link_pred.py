@@ -17,37 +17,25 @@ from torch_geometric.nn.conv import MessagePassing
 
 from models import GCN, GCNSignNet, DecodeOnly, LearnDecode, SignDSS
 
-#MODEL_NAME = 'gcn'
-#MODEL_NAME = 'signnet'
-#MODEL_NAME = 'decode_only'
-#MODEL_NAME = 'learn_decode'
-MODEL_NAME = 'sign_equiv'
-USE_EIGS = True
-NUM_EIGS = 16
-NUM_CLUSTERS = 2
+
 NUM_PARAMS = -1
-LR = .01
-NUM_EPOCHS = 100
-NUM_TRIALS = 10
-GRAPH_TYPE = 'pa'
 
-in_dim = NUM_EIGS if USE_EIGS else 1
 
-def main():
+def main(args):
 
-    def get_synthetic_data(USE_EIGS, NUM_EIGS, NUM_CLUSTERS, graph_type='er'):
+    def get_synthetic_data(args):
         n = 1000
-        num_nodes = n*NUM_CLUSTERS
+        num_nodes = n*args.num_clusters
         added_edges = 1000
 
-        if graph_type == 'er':
+        if args.graph_type == 'er':
             H = nx.erdos_renyi_graph(n, .05)
-        elif graph_type == 'pa':
+        elif args.graph_type == 'pa':
             H = nx.barabasi_albert_graph(n, 20)
         else:
             raise ValueError('Invalid graph type')
 
-        G = nx.disjoint_union_all([H for _ in range(NUM_CLUSTERS)])
+        G = nx.disjoint_union_all([H for _ in range(args.num_clusters)])
         for _ in range(added_edges):
             i = np.random.randint(0, num_nodes)
             j = np.random.randint(0, num_nodes)
@@ -67,10 +55,10 @@ def main():
         train_data, val_data, test_data = linksplitter(full_data)
 
         # adding Laplacian eigenvectors
-        if USE_EIGS:
+        if args.use_eigs:
             edge_index, edge_weight = get_laplacian(train_data.edge_index, train_data.edge_weight, normalization='sym', num_nodes=train_data.num_nodes)
             L = to_scipy_sparse_matrix(edge_index, edge_weight, train_data.num_nodes)
-            eigvals, eigvecs = scipy.sparse.linalg.eigsh(L, k=NUM_EIGS+1, sigma=1e-8, which='LM', return_eigenvectors=True)
+            eigvals, eigvecs = scipy.sparse.linalg.eigsh(L, k=args.num_eigs+1, sigma=1e-8, which='LM', return_eigenvectors=True)
             eigvecs = torch.from_numpy(eigvecs[:, 1:])
             train_data.x = eigvecs
 
@@ -79,16 +67,16 @@ def main():
 
         return train_data, val_data, test_data
 
-    train_data, val_data, test_data = get_synthetic_data(USE_EIGS, NUM_EIGS, NUM_CLUSTERS, graph_type=GRAPH_TYPE)
+    train_data, val_data, test_data = get_synthetic_data(args)
 
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    if MODEL_NAME == 'gcn':
+    if args.model == 'gcn':
         model = GCN(1, 128, 64, num_layers=3).to(device)
-    elif MODEL_NAME == 'signnet':
-        model = GCNSignNet(NUM_EIGS, NUM_EIGS, 128, 64).to(device)
-    elif MODEL_NAME == 'decode_only':
+    elif args.model == 'signnet':
+        model = GCNSignNet(args.num_eigs, args.num_eigs, 128, 64).to(device)
+    elif args.model == 'decode_only':
         model = DecodeOnly()
 
         start_time = time.time()
@@ -97,10 +85,10 @@ def main():
         print(f'Decode Only Test: {test_auc:.4f}')
         elapsed = time.time() - start_time
         return test_auc, elapsed
-    elif MODEL_NAME == 'learn_decode':
-        model = LearnDecode(NUM_EIGS, 148).to(device)
-    elif MODEL_NAME == 'sign_equiv':
-        model = SignDSS(NUM_EIGS, num_layers=4).to(device)
+    elif args.model == 'learn_decode':
+        model = LearnDecode(args.num_eigs, 148).to(device)
+    elif args.model == 'sign_equiv':
+        model = SignDSS(args.num_eigs, num_layers=4).to(device)
     else:
         raise ValueError('Invalid model name')
 
@@ -110,7 +98,7 @@ def main():
     NUM_PARAMS = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print('Num Parameters:', NUM_PARAMS)
 
-    optimizer = torch.optim.Adam(params=model.parameters(), lr=LR)
+    optimizer = torch.optim.Adam(params=model.parameters(), lr=args.lr)
     criterion = nn.BCEWithLogitsLoss()
 
     def train(data):
@@ -150,7 +138,7 @@ def main():
 
     best_val_auc = final_test_auc = 0
     start_time = time.time()
-    for epoch in range(1, NUM_EPOCHS+1):
+    for epoch in range(1, args.epochs+1):
         loss_lst = []
         val_auc_lst = []
         test_auc_lst = []
@@ -173,28 +161,29 @@ def main():
         print(f'Epoch: {epoch:03d}, Loss: {epoch_loss:.4f}, Val: {epoch_val_auc:.4f}, '
               f'Test: {epoch_test_auc:.4f}')
     elapsed = time.time() - start_time
-    elapsed_per_epoch = elapsed / NUM_EPOCHS
+    elapsed_per_epoch = elapsed / args.epochs 
 
     return final_test_auc, elapsed_per_epoch
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--model', type=str, default='sign_equiv')
-    parser.add_argument('--use_eigs', type=int, default=0)
-    parser.add_argument('--num_eigs', type=int, default=0)
+    parser.add_argument('--model', type=str, default='sign_equiv', choices=['gcn', 'signnet', 'decode_only', 'learn_decode', 'sign_equiv'])
+    parser.add_argument('--use_eigs', type=int, default=1)
+    parser.add_argument('--num_eigs', type=int, default=16)
     parser.add_argument('--epochs', type=int, default=100)
     parser.add_argument('--num_trials', type=int, default=10)
-    parser.add_argument('--graph_type', type=str, default='pa')
+    parser.add_argument('--graph_type', type=str, default='er', choices=['er', 'pa'])
     parser.add_argument('--num_clusters', type=int, default=2)
     parser.add_argument('--lr', type=float, default=.01)
-
+    args = parser.parse_args()
+    
 
     test_auc_lst = []
     time_lst = []
     for trial in range(args.num_trials):
         print()
         print('Trial:', trial)
-        test_auc, elapsed = main()
+        test_auc, elapsed = main(args)
         test_auc_lst.append(test_auc)
         time_lst.append(elapsed)
     final_test_auc = np.mean(test_auc_lst)

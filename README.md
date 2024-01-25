@@ -2,7 +2,9 @@
 
 Authors: Derek Lim, Joshua Robinson, Stefanie Jegelka, Haggai Maron.
 
-Official code for our paper.
+NeurIPS 2023 Spotlight.
+
+Official codebase for our paper. Code is coming soon!
 
 ## Link prediction in nearly symmetric graphs
 

@@ -1,5 +1,6 @@
 import os.path as osp
 import time
+import argparse
 
 import torch
 import torch.nn as nn
@@ -177,9 +178,20 @@ def main():
     return final_test_auc, elapsed_per_epoch
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--model', type=str, default='sign_equiv')
+    parser.add_argument('--use_eigs', type=int, default=0)
+    parser.add_argument('--num_eigs', type=int, default=0)
+    parser.add_argument('--epochs', type=int, default=100)
+    parser.add_argument('--num_trials', type=int, default=10)
+    parser.add_argument('--graph_type', type=str, default='pa')
+    parser.add_argument('--num_clusters', type=int, default=2)
+    parser.add_argument('--lr', type=float, default=.01)
+
+
     test_auc_lst = []
     time_lst = []
-    for trial in range(NUM_TRIALS):
+    for trial in range(args.num_trials):
         print()
         print('Trial:', trial)
         test_auc, elapsed = main()
@@ -189,13 +201,14 @@ if __name__ == '__main__':
     test_auc_std = np.std(test_auc_lst)
     time_mean = np.mean(time_lst)
     time_std = np.std(time_lst)
-    print('Graph type:', GRAPH_TYPE)
-    print('Model:', MODEL_NAME)
-    print('Use eigs:', USE_EIGS)
-    print('Num Eigs:', NUM_EIGS)
+
+    print('Graph type:', args.graph_type)
+    print('Model:', args.model)
+    print('Use eigs:', args.use_eigs)
+    print('Num Eigs:', args.num_eigs)
     print('Params:', NUM_PARAMS)
-    print('lr:', LR)
-    print('Num clusters:', NUM_CLUSTERS)
+    print('lr:', args.lr)
+    print('Num clusters:', args.num_clusters)
     print(f'Final Test: {final_test_auc:.4f} +- {test_auc_std:.4f}')
     print(f'Runtime: {time_mean:.4f} +- {time_std:.4f}')
 
